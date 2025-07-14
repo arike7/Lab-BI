@@ -1,0 +1,18 @@
+---
+- name: Configure ETCD Server
+  hosts: etcd_servers
+  become: yes
+  roles:
+    - etcd_server
+
+- name: Configure PostgreSQL Cluster with Patroni
+  hosts: pg_servers
+  become: yes
+  roles:
+    - postgresql_cluster
+
+- name: Install Docker and monitoring components
+  hosts: docker_host
+  become: yes
+  roles:
+    - docker_install

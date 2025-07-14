@@ -1,0 +1,4 @@
+---
+pg_postgres_password: "your_strong_postgres_password"
+pg_test_user_password: "your_strong_test_user_password"
+pg_monitoring_password: "your_strong_monitoring_password"

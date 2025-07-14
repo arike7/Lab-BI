@@ -1,0 +1,165 @@
+---
+- name: Install PostgreSQL 16 and Patroni dependencies (example for CentOS/RHEL)
+  ansible.builtin.yum:
+    name:
+      - https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+      - postgresql16-server
+      - python3-psycopg2
+      - patroni
+      - etcdctl
+    state: present
+
+- name: Initialize PostgreSQL data directory (if not already initialized)
+  ansible.builtin.command: "/usr/pgsql-16/bin/postgresql-16-setup initdb"
+  args:
+    creates: "/var/lib/pgsql/16/data/postgresql.conf"
+
+- name: Ensure PostgreSQL service is stopped (Patroni will manage it)
+  ansible.builtin.systemd:
+    name: postgresql-16
+    state: stopped
+    enabled: no
+
+- name: Copy Patroni configuration file
+  ansible.builtin.template:
+    src: patroni.yml.j2
+    dest: /etc/patroni/patroni.yml
+    owner: postgres
+    group: postgres
+    mode: '0644'
+  notify: Restart Patroni
+
+- name: Set password for postgres user
+  ansible.builtin.postgresql_user:
+    db: postgres
+    name: postgres
+    password: "{{ pg_postgres_password }}"
+    state: present
+  become_user: postgres
+
+- name: Create test_user
+  ansible.builtin.postgresql_user:
+    db: postgres
+    name: test_user
+    password: "{{ pg_test_user_password }}"
+    priv: CONNECT
+    state: present
+  become_user: postgres
+  register: create_test_user_result
+
+- name: Save create_test_user command
+  ansible.builtin.copy:
+    content: "CREATE USER test_user WITH PASSWORD '{{ pg_test_user_password }}' CONNECT;"
+    dest: "/tmp/create_test_user_command.txt"
+    mode: '0644'
+  delegate_to: localhost
+
+- name: Create test_db1
+  ansible.builtin.postgresql_db:
+    name: test_db1
+    owner: test_user
+    state: present
+  become_user: postgres
+  register: create_test_db1_result
+
+- name: Save create_test_db1 command
+  ansible.builtin.copy:
+    content: "CREATE DATABASE test_db1 WITH OWNER = test_user;"
+    dest: "/tmp/create_test_db1_command.txt"
+    mode: '0644'
+  delegate_to: localhost
+
+- name: Allow test_user to connect to test_db1 from any host (via pg_hba.conf, Patroni manages)
+  ansible.builtin.postgresql_privs:
+    db: test_db1
+    privs: CONNECT
+    type: database
+    roles: test_user
+    state: present
+  become_user: postgres
+
+- name: Install and enable pg_stat_statements
+  ansible.builtin.lineinfile:
+    path: /var/lib/pgsql/16/data/postgresql.conf
+    regexp: '^#?shared_preload_libraries\s*=\s*'
+    line: "shared_preload_libraries = 'pg_stat_statements'"
+    state: present
+    backup: yes
+  notify: Restart Patroni
+
+- name: Create pg_stat_statements extension
+  ansible.builtin.postgresql_ext:
+    db: test_db1
+    name: pg_stat_statements
+    state: present
+  become_user: postgres
+
+- name: Create svc_monitoring user
+  ansible.builtin.postgresql_user:
+    db: postgres
+    name: svc_monitoring
+    password: "{{ pg_monitoring_password }}"
+    state: present
+  become_user: postgres
+
+- name: Grant monitoring permissions to svc_monitoring
+  ansible.builtin.postgresql_query:
+    db: postgres
+    query: |
+      GRANT pg_monitor TO svc_monitoring;
+      ALTER USER svc_monitoring SET pg_read_all_stats = on;
+      ALTER USER svc_monitoring SET pg_read_all_settings = on;
+  become_user: postgres
+
+- name: Enable and start Patroni service
+  ansible.builtin.systemd:
+    name: patroni
+    enabled: yes
+    state: started
+
+# --- Add node_exporter for Prometheus monitoring ---
+- name: Create node_exporter group
+  ansible.builtin.group:
+    name: node_exporter
+    state: present
+
+- name: Create node_exporter user
+  ansible.builtin.user:
+    name: node_exporter
+    group: node_exporter
+    shell: /sbin/nologin
+    system: yes
+    create_home: no
+    state: present
+
+- name: Download node_exporter
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz"
+    dest: "/tmp/node_exporter-1.7.0.linux-amd64.tar.gz"
+    mode: '0644'
+
+- name: Extract node_exporter
+  ansible.builtin.unarchive:
+    src: "/tmp/node_exporter-1.7.0.linux-amd64.tar.gz"
+    dest: "/usr/local/bin/"
+    remote_src: yes
+    extra_opts: [--strip-components=1]
+    owner: node_exporter
+    group: node_exporter
+    mode: '0755'
+    creates: "/usr/local/bin/node_exporter"
+
+- name: Create node_exporter systemd service file
+  ansible.builtin.template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Start node_exporter
+
+- name: Enable and start node_exporter service
+  ansible.builtin.systemd:
+    name: node_exporter
+    enabled: yes
+    state: started

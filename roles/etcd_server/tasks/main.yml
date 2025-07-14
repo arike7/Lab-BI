@@ -1,0 +1,84 @@
+---
+- name: Install ETCD dependencies (example for CentOS/RHEL)
+  ansible.builtin.yum:
+    name:
+      - yum-utils
+    state: present
+
+- name: Download and install ETCD
+  ansible.builtin.get_url:
+    url: "https://github.com/etcd-io/etcd/releases/download/v3.5.0/etcd-v3.5.0-linux-amd64.tar.gz"
+    dest: "/tmp/etcd-v3.5.0-linux-amd64.tar.gz"
+
+- name: Extract ETCD
+  ansible.builtin.unarchive:
+    src: "/tmp/etcd-v3.5.0-linux-amd64.tar.gz"
+    dest: "/usr/local/bin/"
+    remote_src: yes
+    extra_opts: [--strip-components=1]
+
+- name: Create ETCD data directory
+  ansible.builtin.file:
+    path: /var/lib/etcd
+    state: directory
+    owner: etcd
+    group: etcd
+
+- name: Create systemd service file for ETCD
+  ansible.builtin.template:
+    src: etcd.service.j2
+    dest: /etc/systemd/system/etcd.service
+  notify: Restart etcd
+
+- name: Enable and start ETCD service
+  ansible.builtin.systemd:
+    name: etcd
+    enabled: yes
+    state: started
+
+# --- Add node_exporter for Prometheus monitoring ---
+- name: Create node_exporter group
+  ansible.builtin.group:
+    name: node_exporter
+    state: present
+
+- name: Create node_exporter user
+  ansible.builtin.user:
+    name: node_exporter
+    group: node_exporter
+    shell: /sbin/nologin
+    system: yes
+    create_home: no
+    state: present
+
+- name: Download node_exporter
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz"
+    dest: "/tmp/node_exporter-1.7.0.linux-amd64.tar.gz"
+    mode: '0644'
+
+- name: Extract node_exporter
+  ansible.builtin.unarchive:
+    src: "/tmp/node_exporter-1.7.0.linux-amd64.tar.gz"
+    dest: "/usr/local/bin/"
+    remote_src: yes
+    extra_opts: [--strip-components=1]
+    owner: node_exporter
+    group: node_exporter
+    mode: '0755'
+    creates: "/usr/local/bin/node_exporter"
+
+- name: Create node_exporter systemd service file
+  ansible.builtin.template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Start node_exporter
+
+- name: Enable and start node_exporter service
+  ansible.builtin.systemd:
+    name: node_exporter
+    enabled: yes
+    state: started
