@@ -1,8 +1,9 @@
 Vagrant.configure("2") do |config|
 
   # Define a common box for all VMs
-  config.vm.box = "oraclelinux/8" # As specified in the prerequisites
-
+  config.vm.box = "oraclelinux/8"
+  config.vm.box_url = "https://oracle.github.io/vagrant-projects/boxes/oraclelinux/8.json"
+  
   # --- etcd01 VM ---
   config.vm.define "etcd01" do |etcd|
     etcd.vm.hostname = "etcd01"
@@ -73,7 +74,7 @@ Vagrant.configure("2") do |config|
       # After setup_ansible_user_and_keys.yml creates the 'ansible' user and distributes keys,
       # the main playbook can be run. It will use the 'ansible' user and key from inventory.ini.
       ansible-playbook -i inventory.ini playbook.yml -vvv
-    EOF
+EOF
     echo "Ansible playbook execution from docker01 completed."
   SHELL
 
