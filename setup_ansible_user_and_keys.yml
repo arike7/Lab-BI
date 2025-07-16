@@ -1,6 +1,0 @@
----
-- name: Setup ansible user and SSH keys
-  hosts: all # Применяется ко всем ВМ
-  become: yes # Выполнять с привилегиями root
-  roles:
-    - ssh_key_setup

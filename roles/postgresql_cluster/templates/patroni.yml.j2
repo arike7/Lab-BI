@@ -1,3 +1,4 @@
+name: {{ inventory_hostname }}
 scope: postgres_cluster
 namespace: /service/
 loop_wait: 10
@@ -8,7 +9,7 @@ listen: {{ inventory_hostname }}:5432
 restapi:
   listen: 0.0.0.0:8008
 etcd3:
-  host: {{ hostvars['etcd01']['ansible_host'] }}:2379
+  host: etcd01:2379
 bootstrap:
   dcs:
     postgresql:
