@@ -4,6 +4,12 @@
   ansible.builtin.rpm_key:
     key: https://download.postgresql.org/pub/repos/yum/keys/RPM-GPG-KEY-PGDG
 
+- name: Install EPEL (to get perl-IPC-Run and other extras)
+  become: yes
+  ansible.builtin.dnf:
+    name: oracle-epel-release-el8
+    state: present
+
 - name: Add official PGDG repository
   become: yes
   ansible.builtin.yum:
@@ -15,69 +21,70 @@
   become: yes
   ansible.builtin.command: dnf -qy module disable postgresql
 
-- name: Ensure python3 is installed
-  ansible.builtin.yum:
-    name: python3
+- name: Ensure Perl installed
+  become: yes
+  ansible.builtin.dnf:
+    name:
+      - perl
     state: present
-  become: yes
 
-- name: Ensure pip3 is installed
+- name: Ensure python3, pip and dev dependencies are installed
+  become: yes
   ansible.builtin.yum:
-    name: python3-pip
+    name:
+      - python3
+      - python3-pip
+      - python3-setuptools
+      - gcc
+      - python3-devel
+      - libffi-devel
+      - openssl-devel
+      - rust
+      - cargo
     state: present
-  become: yes
 
-- name: Add Oracle EPEL repo on OL8
-  ansible.builtin.get_url:
-    url: "https://yum.oracle.com/repo/OracleLinux/OL8/developer/EPEL/x86_64/getPackage/oracle-epel-release-el8-1.0-3.el8.noarch.rpm"
-    dest: /tmp/oracle-epel-release.rpm
-  become: yes
-
-- name: Install Oracle EPEL Release
-  ansible.builtin.yum:
-    name: /tmp/oracle-epel-release.rpm
-    state: present
-  become: yes
-
-- name: Clean DNF cache to refresh repository metadata (important for new repos)
-  ansible.builtin.command: dnf clean all
-  become: yes
-
-- name: Rebuild DNF cache
-  ansible.builtin.command: dnf makecache
-  become: yes
-
-- name: Ensure required Perl modules are installed
-  ansible.builtin.yum:
-    name: perl-IPC-Run
-    state: present
-    enablerepo: epel # Явно включаем EPEL для этого пакета
-  become: yes
-
-- name: Ensure PostgreSQL development headers are installed (for pg_config)
-  ansible.builtin.yum:
-    name: postgresql16-devel
-    state: present
-    enablerepo: pgdg16 # Убедитесь, что PGDG включен для пакета devel
-  become: yes
-
-- name: Install Patroni Python dependencies
+- name: Install pip wheel and setuptools_rust
   ansible.builtin.pip:
     name:
-      - psycopg2-binary
-      - python-etcd
+      - wheel
+      - setuptools_rust
     executable: pip3
   become: yes
 
-- name: Install PostgreSQL 16, Patroni # Убедитесь, что Patroni здесь устанавливается через DNF, если вы так решили
+- name: Install Patroni with etcd support via pip
+  become: yes
+  ansible.builtin.pip:
+    name: patroni[etcd]
+    executable: pip3
+
+- name: Install PostgreSQL 16
   become: yes
   ansible.builtin.dnf:
     name:
       - postgresql16-server
-      - postgresql16
-      - python3-psycopg2
-      - patroni # Если Patroni доступен через DNF/YUM
     state: present
+    enablerepo: pgdg16
+
+- name: Install PostgreSQL contrib package (for pg_stat_statements)
+  become: yes
+  ansible.builtin.dnf:
+    name: postgresql16-contrib
+    state: present
+    enablerepo: pgdg16
+
+- name: Install psycopg2 driver
+  become: yes
+  ansible.builtin.dnf:
+    name: python3-psycopg2
+    state: present
+
+- name: Clean DNF cache
+  ansible.builtin.command: dnf clean all
+  become: yes
+
+- name: Make DNF cache
+  ansible.builtin.command: dnf makecache
+  become: yes
 
 - name: Download ETCD tools (for etcdctl only)
   become: yes
@@ -98,177 +105,140 @@
     creates: "/usr/local/bin/etcdctl"
 
 - name: Initialize PostgreSQL data directory (if not already initialized)
+  become: yes
   ansible.builtin.command: "/usr/pgsql-16/bin/postgresql-16-setup initdb"
   args:
     creates: "/var/lib/pgsql/16/data/postgresql.conf"
-  become: yes # Инициализация требует root
 
-# --- БЛОК: ЗАПУСК PG ДЛЯ КОНФИГУРАЦИИ ---
-- name: Enable and start PostgreSQL service for initial configuration
+# --- Start PG to configure ---
+- name: Enable and start PostgreSQL service for config
+  become: yes
   ansible.builtin.systemd:
     name: postgresql-16
     state: started
-    enabled: yes # Включаем, чтобы Patroni мог потом управлять
+    enabled: yes
+
+- name: Wait for PostgreSQL to become available
   become: yes
-
-- name: Wait for PostgreSQL to start and accept connections for initial config
   ansible.builtin.wait_for:
-    host: "127.0.0.1" # Используем localhost для подключения по сокету
+    host: "127.0.0.1"
     port: 5432
-    delay: 5 # Подождать 5 секунд перед первой проверкой
-    timeout: 120 # До 120 секунд ожидания
-    state: started # Ждем, пока порт будет открыт
-  become: yes # Для проверки порта может потребоваться sudo
+    delay: 5
+    timeout: 120
+    state: started
 
-# --- ВАЖНО: ЗАДАЧИ НАСТРОЙКИ POSTGRESQL ИДУТ ЗДЕСЬ ОДИН РАЗ ---
+# --- Configure PostgreSQL ---
 - name: Set password for postgres user
-  ansible.builtin.postgresql_user:
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
     db: postgres
     name: postgres
     password: "{{ pg_postgres_password }}"
     state: present
-  become_user: postgres
-  become: yes
 
 - name: Create test_user
-  ansible.builtin.postgresql_user:
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
     db: postgres
     name: test_user
     password: "{{ pg_test_user_password }}"
     priv: CONNECT
     state: present
-  become_user: postgres
-  become: yes
-  register: create_test_user_result
-
-- name: Save create_test_user command
-  ansible.builtin.copy:
-    content: "CREATE USER test_user WITH PASSWORD '{{ pg_test_user_password }}' CONNECT;"
-    dest: "/tmp/create_test_user_command.txt"
-    mode: '0644'
-  delegate_to: localhost
 
 - name: Create test_db1
-  ansible.builtin.postgresql_db:
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_db:
     name: test_db1
     owner: test_user
     state: present
-  become_user: postgres
+
+- name: Allow test_user to connect to test_db1
   become: yes
-  register: create_test_db1_result
-
-- name: Save create_test_db1 command
-  ansible.builtin.copy:
-    content: "CREATE DATABASE test_db1 WITH OWNER = test_user;"
-    dest: "/tmp/create_test_db1_command.txt"
-    mode: '0644'
-  delegate_to: localhost
-
-- name: Allow test_user to connect to test_db1 from any host (via pg_hba.conf, Patroni manages)
-  ansible.builtin.postgresql_privs:
+  become_user: postgres
+  community.postgresql.postgresql_privs:
     db: test_db1
     privs: CONNECT
     type: database
     roles: test_user
     state: present
-  become_user: postgres
-  become: yes
 
-- name: Install and enable pg_stat_statements
+- name: Enable pg_stat_statements
+  become: yes
   ansible.builtin.lineinfile:
     path: /var/lib/pgsql/16/data/postgresql.conf
     regexp: '^#?shared_preload_libraries\s*=\s*'
     line: "shared_preload_libraries = 'pg_stat_statements'"
     state: present
     backup: yes
-  become: yes
-  notify: Restart Patroni # Этот notify пока не будет срабатывать, т.к. Patroni еще не запущен
 
 - name: Create pg_stat_statements extension
-  ansible.builtin.postgresql_ext:
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_ext:
     db: test_db1
     name: pg_stat_statements
     state: present
-  become_user: postgres
-  become: yes
 
 - name: Create svc_monitoring user
-  ansible.builtin.postgresql_user:
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
     db: postgres
     name: svc_monitoring
     password: "{{ pg_monitoring_password }}"
     state: present
-  become_user: postgres
-  become: yes
 
 - name: Grant monitoring permissions to svc_monitoring
-  ansible.builtin.postgresql_query:
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_query:
     db: postgres
     query: |
       GRANT pg_monitor TO svc_monitoring;
-      ALTER USER svc_monitoring SET pg_read_all_stats = on;
-      ALTER USER svc_monitoring SET pg_read_all_settings = on;
-  become_user: postgres
+
+# --- Stop PG (Patroni will manage it) ---
+- name: Stop PostgreSQL service
   become: yes
-
-# --- КОНЕЦ БЛОКА НАСТРОЙКИ POSTGRESQL ---
-
-- name: Ensure PostgreSQL service is stopped (Patroni will manage it) # Теперь эта задача идет ПОСЛЕ настройки PG
   ansible.builtin.systemd:
     name: postgresql-16
     state: stopped
     enabled: no
-  become: yes
 
-- name: Copy Patroni configuration file # Эта задача теперь идет после остановки PG
+- name: Copy Patroni config
+  become: yes
   ansible.builtin.template:
     src: patroni.yml.j2
     dest: /etc/patroni/patroni.yml
     owner: postgres
     group: postgres
     mode: '0644'
-  become: yes
   notify: Restart Patroni
 
-- name: Enable and start Patroni service
+- name: Enable and start Patroni
+  become: yes
   ansible.builtin.systemd:
     name: patroni
     enabled: yes
     state: started
-  become: yes
 
-- name: Wait for Patroni to manage PostgreSQL and become available
+- name: Wait for Patroni to bring PostgreSQL up
+  become: yes
   ansible.builtin.wait_for:
     host: "{{ inventory_hostname }}"
     port: 5432
     delay: 5
-    timeout: 180 # Увеличим таймаут, Patroni может дольше стартовать кластер
+    timeout: 180
     state: started
-  become: yes
-
-# --- Add node_exporter for Prometheus monitoring ---
-- name: Create node_exporter group
-  ansible.builtin.group:
-    name: node_exporter
-    state: present
-  become: yes # Добавил become: yes
-
-- name: Create node_exporter user
-  ansible.builtin.user:
-    name: node_exporter
-    group: node_exporter
-    shell: /sbin/nologin
-    system: yes
-    create_home: no
-    state: present
-  become: yes # Добавил become: yes
 
 - name: Download node_exporter
   ansible.builtin.get_url:
     url: "https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz"
     dest: "/tmp/node_exporter-1.7.0.linux-amd64.tar.gz"
     mode: '0644'
-  become: yes # Добавил become: yes
+  become: yes
 
 - name: Extract node_exporter
   ansible.builtin.unarchive:
@@ -280,7 +250,7 @@
     group: node_exporter
     mode: '0755'
     creates: "/usr/local/bin/node_exporter"
-  become: yes # Добавил become: yes
+  become: yes
 
 - name: Create node_exporter systemd service file
   ansible.builtin.template:
@@ -289,12 +259,24 @@
     owner: root
     group: root
     mode: '0644'
-  become: yes # Добавил become: yes
+  become: yes
   notify: Start node_exporter
+
+- name: Clean up ETCD archive
+  ansible.builtin.file:
+    path: /tmp/etcdctl.tar.gz
+    state: absent
+  become: yes
+
+- name: Clean up node_exporter archive
+  ansible.builtin.file:
+    path: /tmp/node_exporter-1.7.0.linux-amd64.tar.gz
+    state: absent
+  become: yes
 
 - name: Enable and start node_exporter service
   ansible.builtin.systemd:
     name: node_exporter
     enabled: yes
     state: started
-  become: yes # Добавил become: yes
+  become: yes

@@ -1,15 +1,15 @@
 ---
-- name: Install ETCD dependencies (example for CentOS/RHEL) # Проверьте, нужен ли yum-utils
+- name: Install ETCD dependencies (example for CentOS/RHEL)
   ansible.builtin.yum:
     name:
       - yum-utils
     state: present
-  become: yes # Добавлено явное указание become:yes
+  become: yes
 
 - name: Ensure 'etcd' group exists
   ansible.builtin.group:
     name: etcd
-    system: yes # Создать системную группу
+    system: yes
     state: present
   become: yes
 
@@ -17,22 +17,46 @@
   become: yes
   ansible.builtin.user:
     name: etcd
-    group: etcd # Явно указываем группу
+    group: etcd
     system: yes
     shell: /sbin/nologin
-    create_home: no # Для etcd нет необходимости в домашней директории пользователя
+    home: /var/lib/etcd
+    create_home: no
     state: present
+    force: yes
+
+- name: Ensure /var/lib/etcd exists and owned by etcd
+  become: yes
+  ansible.builtin.file:
+    path: /var/lib/etcd
+    state: directory
+    owner: etcd
+    group: etcd
+    mode: '0700'
+
+- name: Set SELinux context for etcd data directory
+  community.general.sefcontext:
+    target: '/var/lib/etcd(/.*)?'
+    setype: container_file_t
+    state: present
+  become: yes
+  when: ansible_selinux.status == "enabled"
+
+- name: Check if ETCD binary already exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/etcd
+  register: etcd_binary
 
 - name: Download ETCD binary
   ansible.builtin.get_url:
-    url: "https://github.com/etcd-io/etcd/releases/download/v3.5.0/etcd-v3.5.0-linux-amd64.tar.gz"
-    dest: "/tmp/etcd-v3.5.0-linux-amd64.tar.gz"
-    mode: '0644' # Устанавливаем права для скачанного файла
+    url: "https://github.com/etcd-io/etcd/releases/download/v3.5.14/etcd-v3.5.14-linux-amd64.tar.gz"
+    dest: "/tmp/etcd-v3.5.14-linux-amd64.tar.gz"
+    mode: '0644'
 
 - name: Extract ETCD binaries to /usr/local/bin
   become: yes
   ansible.builtin.unarchive:
-    src: "/tmp/etcd-v3.5.0-linux-amd64.tar.gz"
+    src: "/tmp/etcd-v3.5.14-linux-amd64.tar.gz"
     dest: "/usr/local/bin/"
     remote_src: yes
     extra_opts: [--strip-components=1]
@@ -41,57 +65,61 @@
     mode: '0755'
     creates: "/usr/local/bin/etcd"
 
-- name: Create ETCD data directory
-  become: yes
-  ansible.builtin.file:
-    path: /var/lib/etcd
-    state: directory
-    owner: etcd
-    group: etcd
-    mode: '0700' # Более строгие права для директории данных
-    setype: var_lib_t # Для SELinux, если он включен, это часто требуется
-
 - name: Create systemd service file for ETCD
+  become: yes
   ansible.builtin.template:
     src: etcd.service.j2
     dest: /etc/systemd/system/etcd.service
     owner: root
     group: root
-    mode: '0644' # Стандартные права для service файлов
-  become: yes # Явное указание become:yes
-  notify: Restart etcd # Убедитесь, что у вас есть соответствующий handler
+    mode: '0644'
+  notify: Reload systemd and restart etcd
 
-- name: Enable and start ETCD service
+- name: Verify etcd can run as etcd user
+  command: /usr/local/bin/etcd --version
+  become: yes
+  become_user: etcd
+  register: etcd_version_check
+  changed_when: false
+
+- name: Enable ETCD service
+  become: yes
   ansible.builtin.systemd:
     name: etcd
     enabled: yes
     state: started
-    daemon_reload: yes # Всегда перезагружайте unit файлы systemd после создания/изменения
-  become: yes # Явное указание become:yes
 
 # --- Add node_exporter for Prometheus monitoring ---
+- name: Check if node_exporter binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/node_exporter
+  register: node_exporter_binary
+
 - name: Create 'node_exporter' group
   ansible.builtin.group:
     name: node_exporter
-    system: yes # Создать системную группу
+    system: yes
     state: present
   become: yes
+  when: not node_exporter_binary.stat.exists
 
 - name: Create 'node_exporter' user
   ansible.builtin.user:
     name: node_exporter
-    group: node_exporter # Явно указываем группу
+    group: node_exporter
     shell: /sbin/nologin
     system: yes
     create_home: no
     state: present
   become: yes
+  when: not node_exporter_binary.stat.exists
 
 - name: Download node_exporter
   ansible.builtin.get_url:
     url: "https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz"
     dest: "/tmp/node_exporter-1.7.0.linux-amd64.tar.gz"
     mode: '0644'
+  when: not node_exporter_binary.stat.exists
 
 - name: Extract node_exporter binaries to /usr/local/bin
   ansible.builtin.unarchive:
@@ -99,10 +127,11 @@
     dest: "/usr/local/bin/"
     remote_src: yes
     extra_opts: [--strip-components=1]
-    owner: root # Исполняемые файлы в /usr/local/bin обычно принадлежат root
+    owner: root
     group: root
     mode: '0755'
-    creates: "/usr/local/bin/node_exporter" # Идемпотентность
+    creates: "/usr/local/bin/node_exporter"
+  when: not node_exporter_binary.stat.exists
 
 - name: Create node_exporter systemd service file
   ansible.builtin.template:
@@ -111,21 +140,13 @@
     owner: root
     group: root
     mode: '0644'
-  become: yes # Явное указание become:yes
-  notify: Start node_exporter # Убедитесь, что у вас есть соответствующий handler
-
-- name: Enable and start node_exporter service
-  ansible.builtin.systemd:
-    name: node_exporter
-    enabled: yes
-    state: started
-    daemon_reload: yes # Всегда перезагружайте unit файлы systemd после создания/изменения
-  become: yes # Явное указание become:yes
+  become: yes
+  notify: Start node_exporter
 
 # --- Очистка временных файлов (необязательно, но рекомендуется) ---
 - name: Clean up downloaded ETCD archive
   ansible.builtin.file:
-    path: /tmp/etcd-v3.5.0-linux-amd64.tar.gz
+    path: /tmp/etcd-v3.5.14-linux-amd64.tar.gz
     state: absent
   become: yes
 

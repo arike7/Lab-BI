@@ -5,11 +5,14 @@ loop_wait: 10
 ttl: 30
 retry_timeout: 10
 maximum_lag_on_failover: 1048576
-listen: {{ inventory_hostname }}:5432
+
 restapi:
   listen: 0.0.0.0:8008
+  connect_address: "{{ ansible_host }}:8008"
+
 etcd3:
   host: etcd01:2379
+
 bootstrap:
   dcs:
     postgresql:
@@ -30,6 +33,11 @@ bootstrap:
     - locale: en_US.UTF-8
   create_replica_method:
     - basebackup
-data_dir: /var/lib/pgsql/16/data
+
+postgresql:
+  listen: "{{ ansible_host }}:5432"
+  connect_address: "{{ ansible_host }}:5432"
+  data_dir: /var/lib/pgsql/16/data
+
 log:
   level: INFO

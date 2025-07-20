@@ -11,11 +11,14 @@ Vagrant.configure("2") do |config|
       vb.cpus = "1"
     end
     etcd.vm.provision "shell", inline: <<-SHELL
-      useradd -m -G wheel ansible
-      echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
+      dnf install -y python3
+      useradd -m -s /bin/bash ansible
       mkdir -p /home/ansible/.ssh
+      echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
+      echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDFv1AE+CK3IgqEO0+0jBgf7O3FmAM0/Gt9gc7+mVdJsJtxjh8LBQ5fyMn0MDO6plfjgE5bHbTH+zZzgqGgMKtwrnR8fk/+kCkTggCHldQVdS+TvQkQ9sP2LdfkACj49OwSDQPgB2j7qWaj+0bOHWGsfbMjZNka8Kh325mrhDBKCGwqWWiogTDR1ktknLH8YNlP/0gwzN7KCRpf16ePf5KNM/ydXqtEe+F/js/3bziyp2ofsF3eo9rTTDEoYwkAwop/QnzdvTuVp/ZQRvvb1d4ALOTZJ5YaEzr61KnoYbZAnyo4xmrm2USh2OsoVrm2P9uaCD/cXveSJehyV8xkpIxqr2AhENasni72SJ87tvMxc/3Q/wwLd2HbZ1dGUJ3UgNswkrWZ397I2Mdg3QVWNtoU2degQ6SWJ2jg8oLUelgdOyk0AlCP9CZvs+RB6SrwuLif69vxLBxz8znnJMt9ZoFkWP5lbbtztGqVa+usd0/uioJFgAZibTpijwi3+E/36i0= ansible@docker01' > /home/ansible/.ssh/authorized_keys
       chown -R ansible:ansible /home/ansible/.ssh
-      echo "ansible:ansible" | chpasswd
+      chmod 700 /home/ansible/.ssh
+      chmod 600 /home/ansible/.ssh/authorized_keys
 
       echo "192.168.56.101 etcd01" >> /etc/hosts
       echo "192.168.56.102 pgsql01" >> /etc/hosts
@@ -34,11 +37,14 @@ Vagrant.configure("2") do |config|
       vb.cpus = "2"
     end
     pgsql1.vm.provision "shell", inline: <<-SHELL
-      useradd -m -G wheel ansible
-      echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
+      dnf install -y python3
+      useradd -m -s /bin/bash ansible
       mkdir -p /home/ansible/.ssh
+      echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
+      echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDFv1AE+CK3IgqEO0+0jBgf7O3FmAM0/Gt9gc7+mVdJsJtxjh8LBQ5fyMn0MDO6plfjgE5bHbTH+zZzgqGgMKtwrnR8fk/+kCkTggCHldQVdS+TvQkQ9sP2LdfkACj49OwSDQPgB2j7qWaj+0bOHWGsfbMjZNka8Kh325mrhDBKCGwqWWiogTDR1ktknLH8YNlP/0gwzN7KCRpf16ePf5KNM/ydXqtEe+F/js/3bziyp2ofsF3eo9rTTDEoYwkAwop/QnzdvTuVp/ZQRvvb1d4ALOTZJ5YaEzr61KnoYbZAnyo4xmrm2USh2OsoVrm2P9uaCD/cXveSJehyV8xkpIxqr2AhENasni72SJ87tvMxc/3Q/wwLd2HbZ1dGUJ3UgNswkrWZ397I2Mdg3QVWNtoU2degQ6SWJ2jg8oLUelgdOyk0AlCP9CZvs+RB6SrwuLif69vxLBxz8znnJMt9ZoFkWP5lbbtztGqVa+usd0/uioJFgAZibTpijwi3+E/36i0= ansible@docker01' > /home/ansible/.ssh/authorized_keys
       chown -R ansible:ansible /home/ansible/.ssh
-      echo "ansible:ansible" | chpasswd
+      chmod 700 /home/ansible/.ssh
+      chmod 600 /home/ansible/.ssh/authorized_keys
 
       echo "192.168.56.101 etcd01" >> /etc/hosts
       echo "192.168.56.102 pgsql01" >> /etc/hosts
@@ -57,11 +63,14 @@ Vagrant.configure("2") do |config|
       vb.cpus = "2"
     end
     pgsql2.vm.provision "shell", inline: <<-SHELL
-      useradd -m -G wheel ansible
-      echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
+      dnf install -y python3
+      useradd -m -s /bin/bash ansible
       mkdir -p /home/ansible/.ssh
+      echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
+      echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDFv1AE+CK3IgqEO0+0jBgf7O3FmAM0/Gt9gc7+mVdJsJtxjh8LBQ5fyMn0MDO6plfjgE5bHbTH+zZzgqGgMKtwrnR8fk/+kCkTggCHldQVdS+TvQkQ9sP2LdfkACj49OwSDQPgB2j7qWaj+0bOHWGsfbMjZNka8Kh325mrhDBKCGwqWWiogTDR1ktknLH8YNlP/0gwzN7KCRpf16ePf5KNM/ydXqtEe+F/js/3bziyp2ofsF3eo9rTTDEoYwkAwop/QnzdvTuVp/ZQRvvb1d4ALOTZJ5YaEzr61KnoYbZAnyo4xmrm2USh2OsoVrm2P9uaCD/cXveSJehyV8xkpIxqr2AhENasni72SJ87tvMxc/3Q/wwLd2HbZ1dGUJ3UgNswkrWZ397I2Mdg3QVWNtoU2degQ6SWJ2jg8oLUelgdOyk0AlCP9CZvs+RB6SrwuLif69vxLBxz8znnJMt9ZoFkWP5lbbtztGqVa+usd0/uioJFgAZibTpijwi3+E/36i0= ansible@docker01' > /home/ansible/.ssh/authorized_keys
       chown -R ansible:ansible /home/ansible/.ssh
-      echo "ansible:ansible" | chpasswd
+      chmod 700 /home/ansible/.ssh
+      chmod 600 /home/ansible/.ssh/authorized_keys
 
       echo "192.168.56.101 etcd01" >> /etc/hosts
       echo "192.168.56.102 pgsql01" >> /etc/hosts
@@ -82,31 +91,19 @@ Vagrant.configure("2") do |config|
     end
 
     docker.vm.provision "shell", inline: <<-SHELL
-      useradd -m -G wheel ansible
+      dnf install -y python3 python3-pip vim git
+      echo "Creating ansible user and SSH directory"
+      useradd -m -s /bin/bash ansible
       echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
       mkdir -p /home/ansible/.ssh
       chown -R ansible:ansible /home/ansible/.ssh
-      echo "ansible:ansible" | chpasswd
-
       echo "192.168.56.101 etcd01" >> /etc/hosts
       echo "192.168.56.102 pgsql01" >> /etc/hosts
       echo "192.168.56.103 pgsql02" >> /etc/hosts
       echo "192.168.56.104 docker01" >> /etc/hosts
-
-      sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
-      systemctl restart sshd
-
-      sudo -u ansible ssh-keygen -t rsa -f /home/ansible/.ssh/id_rsa -N ""
-
-      for ip in 101 102 103; do
-        ssh-keyscan 192.168.56.$ip >> /home/ansible/.ssh/known_hosts
-        sudo -u ansible sshpass -p 'ansible' ssh-copy-id -f ansible@192.168.56.$ip
-      done
-
-      sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-      systemctl restart sshd
     SHELL
-
+    
+    # Установка Ansible
     docker.vm.provision "shell", name: "Install base packages and Ansible", inline: <<-SHELL
       echo "DEBUG: Installing base tools and Ansible"
       dnf update -y
@@ -117,25 +114,50 @@ Vagrant.configure("2") do |config|
       pip3 install ansible
     SHELL
 
-    # Sync as vagrant, then chown + symlink for ansible
+    # Sync project folder
     docker.vm.synced_folder ".", "/home/vagrant/ansible_project", type: "rsync",
       rsync__exclude: ".vagrant/",
       rsync__args: ["--verbose", "--archive", "--delete"]
 
+    # Копирование приватного ключа вручную из проекта
+    docker.vm.provision "shell", inline: <<-SHELL
+      echo "Copying private key manually"
+      cp /home/vagrant/ansible_project/id_rsa /home/ansible/.ssh/id_rsa
+      #cp -r /home/vagrant/ansible_project /home/ansible/
+      chown ansible:ansible /home/ansible/.ssh/id_rsa
+      chmod 600 /home/ansible/.ssh/id_rsa
+    SHELL
+
+    # PATH to Ansible
+    docker.vm.provision "shell", inline: <<-SHELL
+      echo 'export PATH=$PATH:/usr/local/bin' >> /home/ansible/.bashrc
+      chown ansible:ansible /home/ansible/.bashrc
+    SHELL
+
+    # Запуск Ansible от пользователя ansible
     docker.vm.provision "shell", run: "always", inline: <<-SHELL
-      echo "Fixing ownership and linking ansible_project..."
+      echo "Fixing permissions and ownership..."
+      chmod o+x /home/vagrant
       chown -R ansible:ansible /home/vagrant/ansible_project
+      echo "Linking ansible_project..."
       ln -sf /home/vagrant/ansible_project /home/ansible/ansible_project
-
-      export PATH=$PATH:/usr/local/bin
-
-      echo "Running Ansible playbook locally on docker01..."
-      cd /home/ansible/ansible_project
-      if [ -f inventory.ini ] && [ -f playbook.yml ]; then
-        ansible-playbook -i inventory.ini playbook.yml || echo "Playbook failed or skipped"
-      else
-        echo "Ansible files not found in synced folder. Skipping execution."
-      fi
+      chown -R ansible:ansible /home/ansible/ansible_project
+      echo "Running Ansible playbook as ansible user..."
+      sudo -u ansible bash -c '
+        cd /home/ansible/ansible_project
+        echo "Running Ansible playbook locally on docker01..."
+        if [ -f inventory.ini ] && [ -f playbook.yml ]; then
+          /usr/local/bin/ansible-playbook -i inventory.ini playbook.yml --vault-password-file vault_pass || echo "Playbook failed or skipped"
+        else
+          echo "Ansible files not found in synced folder. Skipping execution."
+        fi
+      '
     SHELL
   end
 end
+
+    
+
+    
+
+    

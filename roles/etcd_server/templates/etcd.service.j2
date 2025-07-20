@@ -6,17 +6,17 @@ Wants=network-online.target
 
 [Service]
 Type=notify
-User=etcd  # Добавлено
-Group=etcd # Добавлено
+User=etcd
+Group=etcd
 ExecStart=/usr/local/bin/etcd \
   --name {{ inventory_hostname }} \
   --data-dir /var/lib/etcd \
   --initial-cluster-state new \
-  --initial-cluster {{ inventory_hostname }}=http://{{ ansible_default_ipv4.address }}:2380 \
-  --initial-advertise-peer-urls http://{{ ansible_default_ipv4.address }}:2380 \
+  --initial-cluster {{ inventory_hostname }}=http://{{ ansible_host }}:2380 \
+  --initial-advertise-peer-urls http://{{ ansible_host }}:2380 \
   --listen-peer-urls http://0.0.0.0:2380 \
   --listen-client-urls http://0.0.0.0:2379,http://127.0.0.1:2379 \
-  --advertise-client-urls http://{{ ansible_default_ipv4.address }}:2379
+  --advertise-client-urls http://{{ ansible_host }}:2379
 Restart=always
 RestartSec=5s
 LimitNOFILE=40000
