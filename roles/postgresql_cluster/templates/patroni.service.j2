@@ -1,0 +1,14 @@
+[Unit]
+Description=Patroni PostgreSQL HA Cluster Node
+After=network.target
+
+[Service]
+User=postgres
+Group=postgres
+Environment="PATH=/usr/pgsql-16/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+ExecStart=/usr/local/bin/patroni /etc/patroni/patroni.yml
+Restart=on-failure
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

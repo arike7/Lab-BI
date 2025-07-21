@@ -6,7 +6,7 @@
     - etcd_server
 
 - name: Configure PostgreSQL Cluster with Patroni
-  hosts: pg_servers
+  hosts: postgresql
   become: yes
   roles:
     - postgresql_cluster

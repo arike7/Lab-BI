@@ -38,6 +38,20 @@ postgresql:
   listen: "{{ ansible_host }}:5432"
   connect_address: "{{ ansible_host }}:5432"
   data_dir: /var/lib/pgsql/16/data
+  pg_ctl: /usr/pgsql-16/bin/pg_ctl
+  pg_controldata: /usr/pgsql-16/bin/pg_controldata
+  pg_hba:
+  - local all all trust
+  - host all all 127.0.0.1/32 md5
+  - host all all 0.0.0.0/0 md5
+  - host replication postgres 192.168.56.0/24 md5
+  authentication:
+    superuser:
+      username: postgres
+      password: "{{ pg_postgres_password }}"
+    replication:
+      username: postgres
+      password: "{{ pg_postgres_password }}"
 
 log:
   level: INFO

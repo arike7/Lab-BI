@@ -4,22 +4,23 @@
   ansible.builtin.rpm_key:
     key: https://download.postgresql.org/pub/repos/yum/keys/RPM-GPG-KEY-PGDG
 
-- name: Install EPEL (to get perl-IPC-Run and other extras)
+- name: Install EPEL repository
   become: yes
   ansible.builtin.dnf:
-    name: oracle-epel-release-el8
+    name: epel-release
     state: present
 
-- name: Add official PGDG repository
-  become: yes
-  ansible.builtin.yum:
-    name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+- name: Install libselinux-python
+  ansible.builtin.dnf:
+    name: python3-libselinux
     state: present
-    disable_gpg_check: yes
-
-- name: Disable built-in PostgreSQL module
   become: yes
-  ansible.builtin.command: dnf -qy module disable postgresql
+
+- name: Ensure psycopg2 is installed
+  pip:
+    name: psycopg2-binary
+    executable: /usr/bin/pip3.8
+  become: true
 
 - name: Ensure Perl installed
   become: yes
@@ -55,7 +56,18 @@
   become: yes
   ansible.builtin.pip:
     name: patroni[etcd]
-    executable: pip3
+    executable: /usr/bin/pip3.8
+
+- name: Add official PGDG repository
+  become: yes
+  ansible.builtin.yum:
+    name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    state: present
+    disable_gpg_check: yes
+
+- name: Disable built-in PostgreSQL module
+  become: yes
+  ansible.builtin.command: dnf -qy module disable postgresql
 
 - name: Install PostgreSQL 16
   become: yes
@@ -77,6 +89,133 @@
   ansible.builtin.dnf:
     name: python3-psycopg2
     state: present
+
+- name: Ensure Patroni config directory exists
+  file:
+    path: /etc/patroni
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0755'
+  become: true
+
+- name: Copy Patroni config
+  become: yes
+  ansible.builtin.template:
+    src: patroni.yml.j2
+    dest: /etc/patroni/patroni.yml
+    owner: postgres
+    group: postgres
+    mode: '0644'
+  notify: Restart Patroni
+
+- name: Copy systemd unit for Patroni
+  template:
+    src: patroni.service.j2
+    dest: /etc/systemd/system/patroni.service
+    mode: '0644'
+  become: true
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+  become: true
+
+- name: Enable and start Patroni
+  become: yes
+  ansible.builtin.systemd:
+    name: patroni
+    enabled: yes
+    state: started
+
+- name: Wait for Patroni to bring PostgreSQL up
+  become: yes
+  ansible.builtin.wait_for:
+    host: "{{ inventory_hostname }}"
+    port: 5432
+    delay: 5
+    timeout: 180
+    state: started
+
+# === Только после старта Patroni делаем конфигурации ===
+- name: Set password for postgres user
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    db: postgres
+    name: postgres
+    password: "{{ pg_postgres_password }}"
+    state: present
+  when: inventory_hostname == groups['postgresql'][0]
+
+- name: Create test_user
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    db: postgres
+    name: test_user
+    password: "{{ pg_test_user_password }}"
+    priv: CONNECT
+    state: present
+  when: inventory_hostname == groups['postgresql'][0]
+
+- name: Create test_db1
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: test_db1
+    owner: test_user
+    state: present
+  when: inventory_hostname == groups['postgresql'][0]
+
+- name: Allow test_user to connect to test_db1
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    db: test_db1
+    privs: CONNECT
+    type: database
+    roles: test_user
+    state: present
+  when: inventory_hostname == groups['postgresql'][0]
+
+- name: Create svc_monitoring user
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    db: postgres
+    name: svc_monitoring
+    password: "{{ pg_monitoring_password }}"
+    state: present
+  when: inventory_hostname == groups['postgresql'][0]
+
+- name: Grant monitoring permissions to svc_monitoring
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_query:
+    db: postgres
+    query: |
+      GRANT pg_monitor TO svc_monitoring;
+  when: inventory_hostname == groups['postgresql'][0]
+
+- name: Enable pg_stat_statements
+  become: yes
+  ansible.builtin.lineinfile:
+    path: /var/lib/pgsql/16/data/postgresql.conf
+    regexp: '^#?shared_preload_libraries\s*=\s*'
+    line: "shared_preload_libraries = 'pg_stat_statements'"
+    state: present
+    backup: yes
+  when: inventory_hostname == groups['postgresql'][0]
+
+- name: Create pg_stat_statements extension
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_ext:
+    db: test_db1
+    name: pg_stat_statements
+    state: present
+  when: inventory_hostname == groups['postgresql'][0]
 
 - name: Clean DNF cache
   ansible.builtin.command: dnf clean all
@@ -111,127 +250,14 @@
     creates: "/var/lib/pgsql/16/data/postgresql.conf"
 
 # --- Start PG to configure ---
-- name: Enable and start PostgreSQL service for config
-  become: yes
-  ansible.builtin.systemd:
-    name: postgresql-16
-    state: started
-    enabled: yes
-
-- name: Wait for PostgreSQL to become available
-  become: yes
-  ansible.builtin.wait_for:
-    host: "127.0.0.1"
-    port: 5432
-    delay: 5
-    timeout: 120
-    state: started
-
-# --- Configure PostgreSQL ---
-- name: Set password for postgres user
-  become: yes
-  become_user: postgres
-  community.postgresql.postgresql_user:
-    db: postgres
-    name: postgres
-    password: "{{ pg_postgres_password }}"
+- name: Create node_exporter system user
+  ansible.builtin.user:
+    name: node_exporter
+    system: yes
+    shell: /sbin/nologin
+    create_home: no
     state: present
-
-- name: Create test_user
   become: yes
-  become_user: postgres
-  community.postgresql.postgresql_user:
-    db: postgres
-    name: test_user
-    password: "{{ pg_test_user_password }}"
-    priv: CONNECT
-    state: present
-
-- name: Create test_db1
-  become: yes
-  become_user: postgres
-  community.postgresql.postgresql_db:
-    name: test_db1
-    owner: test_user
-    state: present
-
-- name: Allow test_user to connect to test_db1
-  become: yes
-  become_user: postgres
-  community.postgresql.postgresql_privs:
-    db: test_db1
-    privs: CONNECT
-    type: database
-    roles: test_user
-    state: present
-
-- name: Enable pg_stat_statements
-  become: yes
-  ansible.builtin.lineinfile:
-    path: /var/lib/pgsql/16/data/postgresql.conf
-    regexp: '^#?shared_preload_libraries\s*=\s*'
-    line: "shared_preload_libraries = 'pg_stat_statements'"
-    state: present
-    backup: yes
-
-- name: Create pg_stat_statements extension
-  become: yes
-  become_user: postgres
-  community.postgresql.postgresql_ext:
-    db: test_db1
-    name: pg_stat_statements
-    state: present
-
-- name: Create svc_monitoring user
-  become: yes
-  become_user: postgres
-  community.postgresql.postgresql_user:
-    db: postgres
-    name: svc_monitoring
-    password: "{{ pg_monitoring_password }}"
-    state: present
-
-- name: Grant monitoring permissions to svc_monitoring
-  become: yes
-  become_user: postgres
-  community.postgresql.postgresql_query:
-    db: postgres
-    query: |
-      GRANT pg_monitor TO svc_monitoring;
-
-# --- Stop PG (Patroni will manage it) ---
-- name: Stop PostgreSQL service
-  become: yes
-  ansible.builtin.systemd:
-    name: postgresql-16
-    state: stopped
-    enabled: no
-
-- name: Copy Patroni config
-  become: yes
-  ansible.builtin.template:
-    src: patroni.yml.j2
-    dest: /etc/patroni/patroni.yml
-    owner: postgres
-    group: postgres
-    mode: '0644'
-  notify: Restart Patroni
-
-- name: Enable and start Patroni
-  become: yes
-  ansible.builtin.systemd:
-    name: patroni
-    enabled: yes
-    state: started
-
-- name: Wait for Patroni to bring PostgreSQL up
-  become: yes
-  ansible.builtin.wait_for:
-    host: "{{ inventory_hostname }}"
-    port: 5432
-    delay: 5
-    timeout: 180
-    state: started
 
 - name: Download node_exporter
   ansible.builtin.get_url:

@@ -5,7 +5,6 @@
     name: etcd
     state: restarted
     enabled: yes
-    sleep: 5
     daemon_reload: yes
 
 - name: Start node_exporter

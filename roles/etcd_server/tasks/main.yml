@@ -6,6 +6,13 @@
     state: present
   become: yes
 
+- name: Ensure selinux Python bindings are installed
+  become: yes
+  ansible.builtin.dnf:
+    name: libselinux-python3
+    state: present
+  become: yes
+
 - name: Ensure 'etcd' group exists
   ansible.builtin.group:
     name: etcd
@@ -34,13 +41,13 @@
     group: etcd
     mode: '0700'
 
-- name: Set SELinux context for etcd data directory
-  community.general.sefcontext:
-    target: '/var/lib/etcd(/.*)?'
-    setype: container_file_t
-    state: present
-  become: yes
-  when: ansible_selinux.status == "enabled"
+# - name: Set SELinux context for etcd data directory
+#   community.general.sefcontext:
+#     target: '/var/lib/etcd(/.*)?'
+#     setype: container_file_t
+#     state: present
+#   become: yes
+#   when: ansible_selinux.status == "enabled"
 
 - name: Check if ETCD binary already exists
   ansible.builtin.stat:
@@ -49,14 +56,15 @@
 
 - name: Download ETCD binary
   ansible.builtin.get_url:
-    url: "https://github.com/etcd-io/etcd/releases/download/v3.5.14/etcd-v3.5.14-linux-amd64.tar.gz"
-    dest: "/tmp/etcd-v3.5.14-linux-amd64.tar.gz"
+    url: "https://github.com/etcd-io/etcd/releases/download/v3.6.2/etcd-v3.6.2-linux-amd64.tar.gz"
+    dest: "/tmp/etcd-v3.6.2-linux-amd64.tar.gz"
     mode: '0644'
+  when: not etcd_binary.stat.exists
 
 - name: Extract ETCD binaries to /usr/local/bin
   become: yes
   ansible.builtin.unarchive:
-    src: "/tmp/etcd-v3.5.14-linux-amd64.tar.gz"
+    src: "/tmp/etcd-v3.6.2-linux-amd64.tar.gz"
     dest: "/usr/local/bin/"
     remote_src: yes
     extra_opts: [--strip-components=1]
@@ -64,6 +72,7 @@
     group: root
     mode: '0755'
     creates: "/usr/local/bin/etcd"
+  when: not etcd_binary.stat.exists
 
 - name: Create systemd service file for ETCD
   become: yes
@@ -76,9 +85,9 @@
   notify: Reload systemd and restart etcd
 
 - name: Verify etcd can run as etcd user
-  command: /usr/local/bin/etcd --version
   become: yes
   become_user: etcd
+  command: /usr/local/bin/etcd --version
   register: etcd_version_check
   changed_when: false
 
@@ -88,6 +97,7 @@
     name: etcd
     enabled: yes
     state: started
+    daemon_reload: yes
 
 # --- Add node_exporter for Prometheus monitoring ---
 - name: Check if node_exporter binary exists
@@ -103,7 +113,7 @@
   become: yes
   when: not node_exporter_binary.stat.exists
 
-- name: Create 'node_exporter' user
+- name: Create node_exporter user
   ansible.builtin.user:
     name: node_exporter
     group: node_exporter
@@ -146,7 +156,7 @@
 # --- Очистка временных файлов (необязательно, но рекомендуется) ---
 - name: Clean up downloaded ETCD archive
   ansible.builtin.file:
-    path: /tmp/etcd-v3.5.14-linux-amd64.tar.gz
+    path: /tmp/etcd-v3.6.2-linux-amd64.tar.gz
     state: absent
   become: yes
 

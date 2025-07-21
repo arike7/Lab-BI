@@ -11,7 +11,10 @@ Vagrant.configure("2") do |config|
       vb.cpus = "1"
     end
     etcd.vm.provision "shell", inline: <<-SHELL
-      dnf install -y python3
+      echo "Installing Python 3.8 on etcd01..."
+      dnf install -y oracle-epel-release-el8 || dnf install -y epel-release
+      dnf install -y python38 python38-devel
+      dnf install -y libselinux-python3
       useradd -m -s /bin/bash ansible
       mkdir -p /home/ansible/.ssh
       echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
@@ -37,7 +40,10 @@ Vagrant.configure("2") do |config|
       vb.cpus = "2"
     end
     pgsql1.vm.provision "shell", inline: <<-SHELL
-      dnf install -y python3
+      echo "Installing Python 3.8 on etcd01..."
+      dnf install -y oracle-epel-release-el8 || dnf install -y epel-release
+      dnf install -y python38 python38-devel
+      dnf install -y libselinux-python3
       useradd -m -s /bin/bash ansible
       mkdir -p /home/ansible/.ssh
       echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
@@ -63,7 +69,10 @@ Vagrant.configure("2") do |config|
       vb.cpus = "2"
     end
     pgsql2.vm.provision "shell", inline: <<-SHELL
-      dnf install -y python3
+      echo "Installing Python 3.8 on etcd01..."
+      dnf install -y oracle-epel-release-el8 || dnf install -y epel-release
+      dnf install -y python38 python38-devel
+      dnf install -y libselinux-python3
       useradd -m -s /bin/bash ansible
       mkdir -p /home/ansible/.ssh
       echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ansible
@@ -104,14 +113,22 @@ Vagrant.configure("2") do |config|
     SHELL
     
     # Установка Ansible
-    docker.vm.provision "shell", name: "Install base packages and Ansible", inline: <<-SHELL
-      echo "DEBUG: Installing base tools and Ansible"
+    docker.vm.provision "shell", name: "Install Python 3.8 and Ansible", inline: <<-SHELL
+      echo "Installing Python 3.8 and pip..."
       dnf update -y
-      dnf install -y oracle-epel-release-for-ol8 || dnf install -y epel-release || echo "Warning: EPEL not installed"
-      dnf install -y python3-dnf python3-pip rsync gcc python3-devel rust cargo openssl-devel libffi-devel
-      pip3 install --upgrade pip
-      pip3 install setuptools_rust
-      pip3 install ansible
+      dnf install -y oracle-epel-release-for-ol8 || dnf install -y epel-release
+      dnf install -y python38 python38-devel gcc openssl-devel libffi-devel rust cargo
+      dnf install -y libselinux-python3
+      curl -sS https://bootstrap.pypa.io/get-pip.py | python3.8
+
+      echo "Installing Ansible via Python 3.8 pip..."
+      python3.8 -m pip install --upgrade pip
+      python3.8 -m pip install setuptools wheel setuptools_rust
+      python3.8 -m pip install ansible
+
+      echo "Creating symlinks for ansible commands..."
+      ln -sf $(which ansible) /usr/local/bin/ansible
+      ln -sf $(which ansible-playbook) /usr/local/bin/ansible-playbook
     SHELL
 
     # Sync project folder

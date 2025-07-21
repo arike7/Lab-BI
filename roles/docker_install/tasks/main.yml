@@ -103,6 +103,14 @@
     group: ansible
     mode: '0644'
 
+- name: Copy prometheus.yml to target directory
+  ansible.builtin.copy:
+    src: prometheus.yml
+    dest: /home/ansible/prometheus.yml
+    owner: ansible
+    group: ansible
+    mode: '0644'
+
 - name: Launch containers
   ansible.builtin.shell: docker compose -f /home/ansible/docker-compose.yml up -d
   args:
