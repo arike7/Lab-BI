@@ -40,7 +40,9 @@ services:
     image: quay.io/prometheuscommunity/postgres-exporter:latest
     container_name: postgres_exporter
     environment:
-      DATA_SOURCE_NAME: "postgresql://svc_monitoring:{{ pg_monitoring_password }}@pgsql01:5432/postgres?sslmode=disable"
+      {% set primary_pg = groups['postgresql'][0] %}
+      {% set fallback_pg = groups['postgresql'][1] if groups['postgresql'] | length > 1 else groups['postgresql'][0] %}
+      DATA_SOURCE_NAME: "postgresql://svc_monitoring:{{ pg_monitoring_password }}@{{ primary_pg }}:5432/postgres?sslmode=disable"
     networks:
       - monitoring_net
 

@@ -21,6 +21,14 @@
     state: present
     update_cache: yes
 
+- name: Ensure Python requests and docker modules are installed
+  pip:
+    name:
+      - requests
+      - docker
+    executable: /usr/bin/pip3.8
+  become: yes
+
 - name: Add vagrant user to docker group
   ansible.builtin.user:
     name: vagrant
@@ -103,6 +111,14 @@
     group: ansible
     mode: '0644'
 
+- name: Template prometheus.yml to project root
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ playbook_dir }}/prometheus.yml"
+    owner: ansible
+    group: ansible
+    mode: '0644'
+
 - name: Copy prometheus.yml to target directory
   ansible.builtin.copy:
     src: prometheus.yml
@@ -116,3 +132,6 @@
   args:
     chdir: /home/ansible
   become: yes
+
+- name: Configure Grafana provisioning
+  import_tasks: grafana_provisioning.yml

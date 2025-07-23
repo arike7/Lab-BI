@@ -1,0 +1,34 @@
+- name: Create Grafana provisioning directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: ansible
+    group: ansible
+    mode: '0755'
+  loop:
+    - /etc/grafana/provisioning/datasources
+    - /etc/grafana/provisioning/dashboards
+
+- name: Copy Prometheus datasource config
+  template:
+    src: grafana-datasource.yml.j2
+    dest: /etc/grafana/provisioning/datasources/datasource.yml
+    mode: '0644'
+
+- name: Copy dashboard provider config
+  template:
+    src: grafana-dashboard.yml.j2
+    dest: /etc/grafana/provisioning/dashboards/dashboard.yml
+    mode: '0644'
+
+- name: Copy PostgreSQL dashboard JSON
+  copy:
+    src: postgres_exporter_dashboard.json
+    dest: /etc/grafana/provisioning/dashboards/postgres_exporter_dashboard.json
+    mode: '0644'
+
+- name: Restart Grafana container
+  community.docker.docker_container:
+    name: grafana
+    state: started
+    restart: true
